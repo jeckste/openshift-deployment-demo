@@ -1,0 +1,119 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      description: Exposes and load balances the application pods
+      service.alpha.openshift.io/dependencies: '[{"name": "simple-node-app", "kind": "Service"}]'
+    labels:
+      template: simple-node-app-template
+    name: simple-node-app
+  spec:
+    ports:
+    - name: web
+      port: 5000
+      targetPort: 5000
+    selector:
+      name: simple-node-app
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: simple-node-app
+  spec:
+    host: ""
+    to:
+      kind: Service
+      name: simple-node-app
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    annotations:
+      description: Keeps track of changes in the application image
+    name: simple-node-app
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    annotations:
+      description: Defines how to build the application
+    labels:
+      template: simple-node-app-template
+    name: simple-node-app
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: simple-node-app:latest
+    postCommit:
+      script: npm test
+    source:
+      contextDir: ""
+      git:
+        ref: ""
+        uri: https://github.com/jeckste/simple-node-app.git
+      type: Git
+    strategy:
+      sourceStrategy:
+        env:
+        - name: NPM_MIRROR
+          value: ""
+        from:
+          kind: ImageStreamTag
+          name: nodejs:4
+          namespace: openshift
+      type: Source
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    annotations:
+      description: Defines how to deploy the application server
+    labels:
+      template: simple-node-app-template
+    name: simple-node-app
+  spec:
+    replicas: 1
+    selector:
+      name: simple-node-app
+    strategy:
+      type: Rolling
+    template:
+      metadata:
+        labels:
+          name: simple-node-app
+        name: simple-node-app
+      spec:
+        containers:
+        - env:
+          - name: APP_VERSION
+            value: "1.0.1"
+          image: "172.30.1.1:5000/myproject/simple-node-app:latest"
+          name: simple-node-app
+          ports:
+          - containerPort: 5000
+          resources:
+            limits:
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/ping
+              port: 5000
+            initialDelaySeconds: 3
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /api/ping
+              port: 5000
+            initialDelaySeconds: 30
+            timeoutSeconds: 3
+    triggers:
+    - imageChangeParams:
+        automatic: false
+        containerNames:
+        - simple-node-app
+        from:
+          kind: ImageStreamTag
+          name: simple-node-app:latest
+      type: ImageChange
+    - type: ConfigChange
+kind: List
+metadata: {}
